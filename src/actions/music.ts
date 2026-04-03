@@ -1,47 +1,30 @@
 // src/actions/music.ts
-'use server'
+"use server"
 
-import { createServer } from '@/lib/supabase-server'
-import { revalidatePath } from 'next/cache'
+import { createServer } from "@/lib/supabase-server" // Ensure you have a server-side client helper
+import { revalidatePath } from "next/cache"
 
 export async function addTrack(formData: FormData) {
-  const supabase = await createServer()
+  const supabase = await createServer() // Server-side client
   
-  try {
-    const file = formData.get('audio_file') as File
-    const releaseId = formData.get('release_id') as string // MUST exist in music_releases
-    const title = formData.get('title') as string
-    const bpm = formData.get('bpm') as string
-    const sig = formData.get('time_signature') as string
-
-    let audioPath = ""
-
-    if (file && file.size > 0) {
-      const fileName = `track-${Date.now()}-${file.name}`
-      const { data, error } = await supabase.storage.from('music').upload(fileName, file)
-      if (error) throw error
-      audioPath = data.path
-    }
-
-    const { error: dbError } = await supabase
-      .from('music_tracks')
-      .insert([{
-        title: title,
-        release_id: releaseId,
-        bpm: parseFloat(bpm) || null, // DB is 'double precision'
-        time_signature: sig,
-        file_url: audioPath,
-        file_url_stream: audioPath, // Using same file for stream for now
-      }])
-
-    if (dbError) throw dbError
-    
-    revalidatePath('/')
-    return { success: true }
-
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Audio sync failed"
-    console.error("Music Insert Failed:", msg)
-    return { success: false, error: msg }
+  // Extract data from formData
+  const trackData = {
+    title: formData.get('title') as string,
+    bpm: parseInt(formData.get('bpm') as string) || null,
+    time_signature: formData.get('time_signature') as string || '4/4',
+    file_path: formData.get('file_url') as string,
+    // user_id is handled by Postgres default or auth.uid()
   }
+
+  const { error } = await supabase
+    .from('music_tracks') // Ensure this matches your plural table name
+    .insert([trackData])
+
+  if (error) {
+    console.error("Action Error:", error.message)
+    return { success: false, error: error.message }
+  }
+
+  revalidatePath('/dashboard')
+  return { success: true }
 }
