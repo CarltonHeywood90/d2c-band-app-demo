@@ -3,15 +3,14 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
-  // 1. Initial Response
   let response = NextResponse.next({
     request: { headers: request.headers },
   })
 
-  // 2. Initialize Supabase SSR
+  // Initialize with SERVICE_ROLE_KEY to bypass the RLS recursion loop
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!, 
     {
       cookies: {
         getAll() { return request.cookies.getAll() },
@@ -28,18 +27,24 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  // 3. Get User (getUser is safer for Proxy/Middleware than getSession)
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  const isDashboard = request.nextUrl.pathname.startsWith('/dashboard')
-
-  if (isDashboard) {
-    // If no user, redirect to login
-    if (!user || authError) {
+  // Only run protection logic on /dashboard routes
+  if (request.nextUrl.pathname.startsWith('/dashboard')) {
+    
+    // 1. Auth Check
+    if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    // 4. Fetch Role with error handling
+    // 2. MASTER BYPASS (Hardcoded Email)
+    // This allows you in even if the Database is having a meltdown
+    if (user.email === 'brutalhonestyrelentlessdrive@gmail.com') {
+      console.log("[PROXY] Sovereign Access Granted via Email Bypass.");
+      return response; 
+    }
+
+    // 3. DATABASE ROLE CHECK (For everyone else)
     const { data: profile, error: dbError } = await supabase
       .from('profiles')
       .select('role')
@@ -51,27 +56,26 @@ export async function proxy(request: NextRequest) {
     }
 
     const userRole = String(profile?.role || 'guest').toLowerCase().trim()
-    console.log(`[PROXY CHECK] ${user.email} -> Detected Role: "${userRole}"`)
+    console.log(`[PROXY CHECK] ${user.email} -> Role: "${userRole}"`)
 
-    // 5. THE FIX: Redirecting while preserving cookies
+    // 4. AUTHORIZATION ENFORCEMENT
     if (userRole !== 'admin') {
       const redirectUrl = new URL('/vault', request.url)
       const redirectResponse = NextResponse.redirect(redirectUrl)
       
-      // Copy cookies from the 'shaken' response to the redirect response
-      // Without this, the browser loses the session during the redirect
+      // Sync cookies so the session isn't lost on redirect
       response.cookies.getAll().forEach((cookie) => {
-        redirectResponse.cookies.set(cookie.name, cookie.value)
+        redirectResponse.cookies.set(cookie.name, cookie.value, cookie)
       })
       
       return redirectResponse
     }
   }
 
+  // Allow the request to continue for all other routes (Home, Vault, etc.)
   return response
 }
 
 export const config = {
-  // Ensure we match ALL dashboard paths
   matcher: ['/dashboard/:path*'],
 }
