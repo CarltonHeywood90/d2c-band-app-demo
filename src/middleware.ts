@@ -1,29 +1,22 @@
+// src/middleware.ts
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  // 1. Create an initial response
   let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
+    request: { headers: request.headers },
   })
 
-  // 2. Initialize Supabase with the "cookie-shaking" pattern
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
+        getAll() { return request.cookies.getAll() },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
+            request: { headers: request.headers },
           })
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
@@ -33,26 +26,29 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // 3. Get the user
+  // 1. Get the authenticated user
   const { data: { user } } = await supabase.auth.getUser()
 
-  // 4. Handle Dashboard Protection
+  // 2. Only run logic on /dashboard routes
   if (request.nextUrl.pathname.startsWith('/dashboard')) {
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    // Direct Database check for the 'admin' role
-    const { data: profile } = await supabase
+    // 3. Fetch the role from the profiles table
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    // DEBUG: This will show up in your Vercel Logs or Terminal
-    console.log(`--- AUTH CHECK: User ${user.email} is role: ${profile?.role} ---`)
+    // 4. Defensive Logic: 
+    // If there's an error, no profile, or the role isn't 'admin' (case-insensitive)
+    const userRole = profile?.role?.toLowerCase() || 'guest'
+    
+    console.log(`[Middleware] Access attempt: ${user.email} | Role: ${userRole}`)
 
-    if (profile?.role !== 'admin') {
+    if (userRole !== 'admin') {
       const url = request.nextUrl.clone()
       url.pathname = '/vault'
       return NextResponse.redirect(url)
@@ -63,13 +59,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
-  ],
+  matcher: ['/dashboard/:path*', '/vault/:path*'],
 }
