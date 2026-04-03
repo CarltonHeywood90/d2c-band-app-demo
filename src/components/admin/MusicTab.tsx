@@ -34,9 +34,14 @@ export default function MusicTab() {
       if (result.success) {
         alert("Track Committed to Vault")
         form.reset()
+      } else {
+        // THIS is where the hidden error is likely hiding
+        alert(`Server Error: ${result.error}`)
+        console.error("DB Sync failed:", result.error)
       }
-    } catch (err: unknown) {
-      alert((err as Error).message)
+    } catch (error) {
+      alert(`Upload Error: ${(error as Error).message}`)
+      console.error("Upload failed:", error)
     } finally {
       setIsUploading(false)
     }
