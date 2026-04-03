@@ -130,6 +130,7 @@ export default function LoginPage() {
               <input 
                 required 
                 type="email" 
+                autoComplete="username" // [CRITICAL] Helps Password Managers
                 placeholder="EMAIL_ADDR" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -141,6 +142,7 @@ export default function LoginPage() {
               <input 
                 required 
                 type="password" 
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'} // [CRITICAL] Tells Chrome this isn't a trap
                 placeholder="PASSWORD" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
