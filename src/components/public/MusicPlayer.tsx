@@ -1,6 +1,7 @@
 // src/components/public/MusicPlayer.tsx
 "use client"
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
+import { createClient } from "@/lib/supabase-client" // Ensure this helper exists
 
 interface MusicTrack {
   id: string
@@ -8,24 +9,39 @@ interface MusicTrack {
   bpm: number | null
   time_signature: string
   created_at: string
-  file_url: string
-  file_url_stream?: string
+  file_path: string    // Changed from file_url to match DB
+  user_id?: string     // Added to match the new column
 }
 
 export default function MusicPlayer({ track }: { track: MusicTrack }) {
   const [isPlaying, setIsPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
-  
-  const AUDIO_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${track.file_url}`
+  const supabase = createClient()
 
-  const togglePlay = () => {
+  // Use useMemo so we don't recalculate the URL on every render
+  const AUDIO_URL = useMemo(() => {
+    const { data } = supabase.storage
+      .from('music')
+      .getPublicUrl(track.file_path) // 'track.file_path' should be 'library/filename.wav'
+    
+    return data.publicUrl
+  }, [track.file_path, supabase])
+
+  const togglePlay = async () => {
     if (!audioRef.current) return
-    if (isPlaying) {
-      audioRef.current.pause()
-    } else {
-      audioRef.current.play()
+    
+    try {
+      if (isPlaying) {
+        audioRef.current.pause()
+      } else {
+        // High-fidelity WAVs can return a promise that needs to be caught
+        await audioRef.current.play()
+      }
+      setIsPlaying(!isPlaying)
+    } catch (err) {
+      console.error("Playback failed:", err)
+      alert("Format not supported or file not found at: " + AUDIO_URL)
     }
-    setIsPlaying(!isPlaying)
   }
 
   return (
