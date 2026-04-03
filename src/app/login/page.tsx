@@ -21,12 +21,11 @@ export default function LoginPage() {
 
     try {
       if (mode === "signup") {
-        // --- SIGN UP LOGIC ---
+        // --- SIGN UP ---
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            // This ensures that after they verify email (if enabled), they land back here
             emailRedirectTo: `${window.location.origin}/auth/callback`,
           },
         })
@@ -34,47 +33,27 @@ export default function LoginPage() {
         if (error) throw error
 
         if (data.user) {
-          alert("Credentials Initialized. Please check your email to verify (if required) or switch to login mode.")
+          alert("Credentials Initialized. You can now switch to login.")
           setMode("login")
         }
       } else {
-        // --- LOGIN LOGIC ---
-        const { data, error } = await supabase.auth.signInWithPassword({
+        // --- LOGIN ---
+        const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         })
 
         if (error) throw error
 
-        if (data.user) {
-          // Force a router refresh so middleware recognizes the new session
-          router.refresh()
+        // 1. CRITICAL: Refresh the router to sync the new Auth cookie with the Server
+        router.refresh()
 
-          // Fetch the role from our public.profiles table
-          const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', data.user.id)
-            .single()
-
-          if (profileError) {
-            console.error("Profile sync delay:", profileError)
-            // If profile hasn't propagated yet, we default to vault for safety
-            router.push("/vault")
-            return
-          }
-
-          // THE REDIRECT LOGIC
-          if (profile?.role === 'admin') {
-            router.push("/dashboard")
-          } else {
-            router.push("/vault")
-          }
-        }
+        // 2. Push to Dashboard. The Proxy (middleware) will now intercept this 
+        // request, check the role, and decide if the user stays or goes to /vault.
+        router.push("/dashboard")
       }
     } catch (err: unknown) {
-      const msg = (err as Error).message || "An authentication error occurred."
-      setErrorMsg(msg)
+      setErrorMsg((err as { message: string }).message || "An authentication error occurred.")
     } finally {
       setLoading(false)
     }
@@ -107,14 +86,13 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleAuth} className="bg-zinc-900 p-8 rounded-2xl border border-zinc-800 shadow-2xl relative overflow-hidden">
-          {/* Subtle progress bar for loading state */}
           {loading && <div className="absolute top-0 left-0 h-1 bg-white animate-pulse w-full" />}
 
           <h1 className="text-xl font-black uppercase tracking-tighter text-white mb-2">
             {mode === "login" ? "Authentication_Required" : "Create_Credentials"}
           </h1>
           <p className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest mb-8">
-            {mode === "login" ? "Level 2 clearance detected" : "Defaulting to role: fan"}
+            {mode === "login" ? "Sovereign Control v2.4.0" : "Defaulting to role: fan"}
           </p>
 
           {errorMsg && (
@@ -130,11 +108,11 @@ export default function LoginPage() {
               <input 
                 required 
                 type="email" 
-                autoComplete="username" // [CRITICAL] Helps Password Managers
+                autoComplete="username"
                 placeholder="EMAIL_ADDR" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-black border border-zinc-800 p-3 rounded font-mono text-xs text-white outline-none focus:border-zinc-500 transition-colors"
+                className="w-full bg-black border border-zinc-800 p-3 rounded font-mono text-xs text-white outline-none focus:border-zinc-500 transition-colors placeholder:text-zinc-700"
               />
             </div>
             <div className="space-y-1">
@@ -142,11 +120,11 @@ export default function LoginPage() {
               <input 
                 required 
                 type="password" 
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'} // [CRITICAL] Tells Chrome this isn't a trap
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 placeholder="PASSWORD" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-black border border-zinc-800 p-3 rounded font-mono text-xs text-white outline-none focus:border-zinc-500 transition-colors"
+                className="w-full bg-black border border-zinc-800 p-3 rounded font-mono text-xs text-white outline-none focus:border-zinc-500 transition-colors placeholder:text-zinc-700"
               />
             </div>
           </div>
@@ -160,7 +138,7 @@ export default function LoginPage() {
         </form>
 
         <p className="text-center text-[9px] font-mono text-zinc-700 uppercase">
-          Unauthorized access is logged. <br /> Sovereign Control v2.4.0
+          Unauthorized access is logged. <br /> Terminal Session: {new Date().getFullYear()}.04.02
         </p>
       </div>
     </div>
