@@ -1,9 +1,9 @@
 // src/components/public/MusicPlayer.tsx
 "use client"
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { createClient } from "@/lib/supabase-client" // Ensure this helper exists
 
-interface MusicTrack {
+export interface MusicTrack {
   id: string
   title: string
   bpm: number | null
@@ -16,16 +16,23 @@ interface MusicTrack {
 export default function MusicPlayer({ track }: { track: MusicTrack }) {
   const [isPlaying, setIsPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
-  const supabase = createClient()
+  const [audioUrl, setAudioUrl] = useState('')
+  const supabase = useMemo(() => createClient(), [])
 
-  // Use useMemo so we don't recalculate the URL on every render
-  const AUDIO_URL = useMemo(() => {
+  useEffect(() => {
+    if (!track.file_path) {
+      setAudioUrl('')
+      return
+    }
+
     const { data } = supabase.storage
       .from('music')
-      .getPublicUrl(track.file_path) // 'track.file_path' should be 'library/filename.wav'
-    
-    return data.publicUrl
-  }, [track.file_path, supabase])
+      .getPublicUrl(track.file_path)
+
+    setAudioUrl(data.publicUrl ?? '')
+  }, [supabase, track.file_path])
+
+  const AUDIO_URL = audioUrl
 
   const togglePlay = async () => {
     if (!audioRef.current) return
@@ -62,7 +69,7 @@ export default function MusicPlayer({ track }: { track: MusicTrack }) {
             <div className="w-1.5 h-4 bg-current" />
           </div>
         ) : (
-          <div className="w-0 h-0 border-t-[8px] border-t-transparent border-l-[12px] border-l-current border-b-[8px] border-b-transparent ml-1" />
+          <div className="w-0 h-0 border-t-8 border-t-transparent border-l-12 border-l-current border-b-8 border-b-transparent ml-1" />
         )}
       </button>
       
