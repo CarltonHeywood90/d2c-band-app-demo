@@ -1,67 +1,51 @@
 // src/middleware.ts
-import { createServerClient } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
+import { createServerClient, CookieOptions } from '@supabase/ssr'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
-export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
-
+export async function middleware(req: NextRequest) {
+  let res = NextResponse.next()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() { return request.cookies.getAll() },
+        getAll() {
+          return req.cookies.getAll()
+        },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
+          cookiesToSet.forEach(({ name, value, options }) => {
+            res = NextResponse.next()
+            res.cookies.set(name, value, options)
+          })
         },
       },
     }
   )
 
-  // 1. Get the authenticated user
   const { data: { user } } = await supabase.auth.getUser()
 
-  const isDashboardRoute = request.nextUrl.pathname.startsWith('/dashboard')
-  const isVaultRoute = request.nextUrl.pathname.startsWith('/vault')
+  if (req.nextUrl.pathname.startsWith('/dashboard')) {
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', req.url))
+    }
 
-  // 2. If NOT logged in and trying to hit protected areas
-  if (!user && (isDashboardRoute || isVaultRoute)) {
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
-
-  // 3. If logged in, check the ROLE
-  if (user) {
+    // [CRITICAL CHANGE]: Query the database directly instead of trusting metadata
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    // BAND PROTECTION: Only 'admin' can enter /dashboard
-    if (isDashboardRoute && profile?.role !== 'admin') {
-      return NextResponse.redirect(new URL('/vault', request.url))
-    }
-
-    // LOGGED IN USERS: Prevent logged-in users from seeing the /login page
-    if (request.nextUrl.pathname === '/login') {
-      const destination = profile?.role === 'admin' ? '/dashboard' : '/vault'
-      return NextResponse.redirect(new URL(destination, request.url))
+    if (profile?.role !== 'admin') {
+      console.log("Access Denied: Role is", profile?.role)
+      return NextResponse.redirect(new URL('/vault', req.url))
     }
   }
 
-  return response
+  return res
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  matcher: ['/dashboard/:path*'],
 }
