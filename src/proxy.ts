@@ -1,8 +1,9 @@
-// src/middleware.ts
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+// src/proxy.ts
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-export async function middleware(request: NextRequest) {
+// The function name MUST be 'proxy' now
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
     request: { headers: request.headers },
   })
@@ -26,27 +27,23 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // 1. Get the authenticated user
   const { data: { user } } = await supabase.auth.getUser()
 
-  // 2. Only run logic on /dashboard routes
   if (request.nextUrl.pathname.startsWith('/dashboard')) {
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    // 3. Fetch the role from the profiles table
-    const { data: profile, error } = await supabase
+    const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    // 4. Defensive Logic: 
-    // If there's an error, no profile, or the role isn't 'admin' (case-insensitive)
-    const userRole = profile?.role?.toLowerCase() || 'guest'
+    // Defensive check: handle case sensitivity and whitespace
+    const userRole = String(profile?.role || 'guest').toLowerCase().trim()
     
-    console.log(`[Middleware] Access attempt: ${user.email} | Role: ${userRole}`)
+    console.log(`[PROXY CHECK] User: ${user.email} | Role: ${userRole}`)
 
     if (userRole !== 'admin') {
       const url = request.nextUrl.clone()
@@ -59,5 +56,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/vault/:path*'],
+  matcher: ['/dashboard/:path*'],
 }
