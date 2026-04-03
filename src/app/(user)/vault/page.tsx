@@ -1,4 +1,7 @@
 /* eslint-disable react/jsx-no-comment-textnodes */
+
+export const dynamic = 'force-dynamic'
+
 import { 
   getProjectIdentity, 
   getMusicLibrary, 
